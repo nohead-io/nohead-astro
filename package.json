@@ -1,0 +1,68 @@
+{
+  "name": "@nohead/astro",
+  "version": "0.1.0",
+  "description": "Astro content loader and image service for Nohead",
+  "license": "MIT",
+  "homepage": "https://nohead.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nohead-io/nohead-astro.git"
+  },
+  "bugs": "https://github.com/nohead-io/nohead-astro/issues",
+  "keywords": [
+    "nohead",
+    "cms",
+    "headless",
+    "astro",
+    "astro-loader",
+    "withastro"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./image-service": {
+      "types": "./dist/image-service.d.ts",
+      "default": "./dist/image-service.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nohead/sdk": ">=0.16.0 <1.0.0"
+  },
+  "peerDependencies": {
+    "astro": ">=5.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.4",
+    "astro": "^7.4.7",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  }
+}

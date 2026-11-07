@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint"
 import { defineConfig, globalIgnores } from "eslint/config"
 
 export default defineConfig([
-  globalIgnores(["dist", "src/generated"]),
+  globalIgnores(["dist"]),
   {
     files: ["**/*.ts"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
@@ -29,18 +29,6 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/require-await": "off",
-    },
-  },
-  {
-    // Walks any JSON Schema in the contract, so its schemas are typed any on
-    // purpose (`Schema`); modules that read one narrow it (calls.ts).
-    files: ["test/spec.ts"],
-    rules: {
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-call": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unsafe-return": "off",
     },
   },
 ])

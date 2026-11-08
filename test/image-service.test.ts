@@ -1,7 +1,9 @@
 import type { ImageTransform } from "astro"
-import { describe, expect, it } from "vitest"
+import sharpService from "astro/assets/services/sharp"
+import { describe, expect, it, vi } from "vitest"
 
 import imageService from "../src/image-service.ts"
+import { imageMetadata } from "../src/index.ts"
 
 const base =
   "https://images.nohead.io/plain/0199f5c2-7b1e-7c3a-9d4f-2a6b8c0e1f3d/0199f5c2-8a2d-7e4b-b1c3-5d7e9f1a2b4c"
@@ -165,28 +167,97 @@ describe("the Astro image service", () => {
     ).toBe(`${at("rs:fill:400:300/q:25")}@webp`)
   })
 
-  it("serves the site's own images as they are", () => {
+  it("hands the site's own images to Astro's sharp service, which resizes them at build", async () => {
+    // Its URLs need Astro's env; test/build.test.ts builds them for real.
+    const sharpURL = vi
+      .spyOn(sharpService, "getURL")
+      .mockReturnValue("/_image?href=logo.png")
+    const local = {
+      src: "/@fs/site/src/assets/logo.png",
+      width: 1000,
+      height: 500,
+      format: "png" as const,
+    }
+    const options = await imageService.validateOptions!(
+      { src: local, width: 400 },
+      config,
+      logger
+    )
+    expect(options.src).toBe(local)
+    expect(imageService.getURL(options, config, logger)).toBe(
+      "/_image?href=logo.png"
+    )
+    const remote = { src: "https://example.com/cat.png", width: 100 }
+    await imageService.getURL(remote, config, logger)
+    expect(sharpURL).toHaveBeenCalledWith(remote, config, logger)
+    // Astro builds files only with a local service: one with a transform.
+    expect(imageService.transform).toBe(sharpService.transform)
+    sharpURL.mockRestore()
+  })
+
+  it("gives a Nohead image its final URL as src, which getURL returns as it is, so Astro never downloads it", async () => {
+    const options = await imageService.validateOptions!(
+      { src: base, width: 800, height: 600, widths: [400, 800] },
+      config,
+      logger
+    )
+    expect(options.src).toBe(`${at("rs:fill:800:600")}@webp`)
+    // getImage writes an image into the build unless this holds.
+    expect(await imageService.getURL(options, config, logger)).toBe(options.src)
+  })
+
+  it("keeps an image with a known original size within it", async () => {
+    // A 1000 × 500 original, as imageMetadata gives it.
+    const original = {
+      src: base,
+      width: 1000,
+      height: 500,
+      format: "png" as const,
+    }
+    const rendered = await image({
+      src: original,
+      width: 1000,
+      height: 500,
+      alt: "",
+      widths: [400, 800, 1600, 2400],
+    })
     expect(
-      imageService.getURL(
-        {
-          src: {
-            src: "/_astro/logo.png",
-            width: 100,
-            height: 100,
-            format: "png",
-          },
-          width: 100,
-        },
-        config,
-        logger
-      )
-    ).toBe("/_astro/logo.png")
+      rendered.srcset.map(([url, descriptor]) => [url, descriptor])
+    ).toEqual([
+      [`${at("rs:fill:400:200")}@webp`, "400w"],
+      [`${at("rs:fill:800:400")}@webp`, "800w"],
+      [`${at("rs:fill:1000:500")}@webp`, "1000w"],
+    ])
+    expect(rendered.src).toBe(`${at("rs:fill:1000:500")}@webp`)
+    // Asked for more than there is: the original's size, not an enlargement.
     expect(
-      imageService.getURL(
-        { src: "https://example.com/cat.png", width: 100 },
-        config,
-        logger
-      )
-    ).toBe("https://example.com/cat.png")
+      (await image({ src: original, width: 2000, height: 1000, alt: "" })).src
+    ).toBe(`${at("rs:fill:1000:500")}@webp`)
+  })
+})
+
+describe("imageMetadata", () => {
+  it("gives an image asset's URL, size and format, and nothing for other assets", () => {
+    const asset = {
+      content_type: "image/jpeg",
+      image_url: base,
+      width: 1200,
+      height: 800,
+    }
+    expect(imageMetadata(asset)).toEqual({
+      src: base,
+      width: 1200,
+      height: 800,
+      format: "jpg",
+    })
+    expect(
+      imageMetadata({ ...asset, content_type: "image/svg+xml" })?.format
+    ).toBe("svg")
+    // A file, or an image still processing.
+    expect(
+      imageMetadata({ content_type: "application/pdf", image_url: null })
+    ).toBeUndefined()
+    expect(imageMetadata({ ...asset, width: null })).toBeUndefined()
+    expect(imageMetadata(undefined)).toBeUndefined()
   })
 })

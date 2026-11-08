@@ -15,6 +15,7 @@
  * builds (and when `astro dev` starts or syncs). On Astro 6 and later, the
  * collection's fields give the entries their schema and TypeScript type.
  */
+import type { ImageMetadata } from "astro"
 import type { Loader, LoaderContext } from "astro/loaders"
 
 import {
@@ -96,6 +97,48 @@ export interface EmbeddedAsset {
 export interface EmbeddedRecord {
   id: string
   data: Record<string, unknown>
+}
+
+/** Formats Astro reads image metadata in, by content type. */
+const IMAGE_FORMATS: Record<string, ImageMetadata["format"]> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/apng": "apng",
+  "image/tiff": "tiff",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+  "image/avif": "avif",
+}
+
+/**
+ * An image asset (an expanded one, or the SDK's `Asset`) as Astro's image
+ * metadata, for `<Image src={imageMetadata(entry.data.cover)} alt="…" />`
+ * with `@nohead/astro/image-service`. Astro then knows the original's size:
+ * `width` and `height` become optional, and no `srcset` width is larger
+ * than the original. Undefined for an asset without an image URL and size
+ * (a file, a video, or an image still processing). Only for that service:
+ * Astro's own would read it as a file of the site's.
+ */
+export function imageMetadata(
+  asset:
+    | {
+        content_type: string
+        image_url?: string | null
+        width?: number | null
+        height?: number | null
+      }
+    | null
+    | undefined
+): ImageMetadata | undefined {
+  if (!asset?.image_url || !asset.width || !asset.height) return undefined
+  return {
+    src: asset.image_url,
+    width: asset.width,
+    height: asset.height,
+    // Astro reads only the size; another image type is still an image.
+    format: IMAGE_FORMATS[asset.content_type] ?? "png",
+  }
 }
 
 /**

@@ -40,6 +40,7 @@ export const collections = {
 // src/pages/posts/[slug].astro
 import { getCollection, getEntry, render } from "astro:content"
 import { Image } from "astro:assets"
+import { imageMetadata } from "@nohead/astro"
 
 export async function getStaticPaths() {
   const posts = await getCollection("posts")
@@ -48,11 +49,11 @@ export async function getStaticPaths() {
 const { post } = Astro.props // post.data.title: string, post.data.date: Date
 const { Content } = await render(post)
 const authors = await Promise.all(post.data.authors.map((author) => getEntry(author)))
-const { cover } = post.data // an image field's assets have their URL and size
+const cover = imageMetadata(post.data.cover) // the image's URL and original size
 ---
 <h1>{post.data.title}</h1>
 <p>By {authors.map((author) => author?.data.name).join(" and ")}</p>
-{cover && <Image src={cover.image_url!} width={cover.width!} height={cover.height!} alt={cover.alt ?? ""} />}
+{cover && <Image src={cover} widths={[480, 960, 1440]} alt={post.data.cover?.alt ?? ""} />}
 <Content />
 ```
 
@@ -95,7 +96,28 @@ Now the loader reads the collection's fields when Astro syncs (`astro dev`, `ast
 
 ## Images
 
-`image: { service: { entrypoint: "@nohead/astro/image-service" } }` in astro.config, then `<Image src={asset.image_url} width={…} height={…} alt={…} />`. It serves WebP unless a `format` says otherwise: give an SVG `format="svg"` to keep it a vector (an asset's `content_type` tells). Pass `width` and `height`, which expanded assets carry; `inferSize` would need the image host in Astro's `image.domains`. Defaults for every image go in the service's `config`, and an image's own options win: `service: { entrypoint: "@nohead/astro/image-service", config: { quality: 70 } }` (`format` too). Needs Astro 5.9 or later.
+`image: { service: { entrypoint: "@nohead/astro/image-service" } }` in astro.config, then `<Image>` and `<Picture>` (and `getImage`) write each size and format into a Nohead image's URL, which makes it on request: the build never downloads or resizes a Nohead image. Your site's own images (imported ones, and remote ones in `image.domains`) go through Astro's sharp service, resized and converted at build time as Astro does by default.
+
+```astro
+---
+import { Image } from "astro:assets"
+import { imageMetadata } from "@nohead/astro"
+import logo from "../assets/logo.png"
+
+const cover = imageMetadata(post.data.cover) // or an `Asset` from @nohead/sdk
+---
+<Image src={logo} alt="" />                                  <!-- resized at build -->
+<Image src={cover} widths={[480, 960, 1440]} alt="" />       <!-- Nohead's image URLs -->
+<Image src={asset.image_url} width={800} height={600} alt="" />
+```
+
+- **`imageMetadata(asset)`** gives an image asset's URL and original size, as Astro's image metadata: `width` and `height` become optional, and no `srcset` width is larger than the original (a larger one becomes the original's width). It's undefined for a file, a video or an image still processing. Only for this image service: Astro's own would look for the file in your site.
+- **An `image_url`** works too, with `width` and `height`; Astro can't know the original's size from a URL.
+- **Formats:** WebP unless a `format` says otherwise. Give an SVG `format="svg"` to keep it a vector (an asset's `content_type` tells).
+- **Defaults** for every Nohead image go in the service's `config`, and an image's own options win: `service: { entrypoint: "@nohead/astro/image-service", config: { quality: 70 } }` (`format` too). The same `config` takes sharp's options (`jpeg`, `webp`, `avif`, `kernel`…) for your own images.
+- **`sharp`** is needed for your own images, as with Astro's default service.
+
+Needs Astro 5.9 or later.
 
 ## Development
 

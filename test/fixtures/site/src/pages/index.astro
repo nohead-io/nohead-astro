@@ -1,0 +1,18 @@
+---
+import { Image } from "astro:assets"
+
+import { imageMetadata } from "../../../../../src/index.ts"
+// Made by test/build.test.ts: a 2000 × 1000 PNG of the site's own.
+import local from "../assets/local.png"
+
+// A Nohead image whose URL doesn't exist: fetching it would fail the build.
+const cover = imageMetadata({
+  content_type: "image/jpeg",
+  image_url: "https://images.nohead.io/plain/0000/0000",
+  width: 1000,
+  height: 500,
+})!
+---
+
+<Image id="local" src={local} widths={[400, 800]} alt="" />
+<Image id="nohead" src={cover} widths={[400, 800, 1600]} alt="" />

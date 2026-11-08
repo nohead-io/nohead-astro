@@ -4,34 +4,76 @@
  *
  *   image: { service: { entrypoint: "@nohead/astro/image-service" } }
  *
- * then `<Image src={asset.image_url} width={…} height={…} alt={…} />`.
- * `<Image>` and `<Picture>` write each size and format into the image's
- * URL, and Nohead makes it on request, so the build never downloads or
- * resizes an image. Astro's base service supplies the rest (the `<img>`
- * attributes, `srcset` for `widths` and `densities`). WebP unless a
+ * then `<Image src={asset.image_url} width={…} height={…} alt={…} />`, or
+ * `<Image src={imageMetadata(entry.data.cover)} alt={…} />`, which gives
+ * Astro the original's size. `<Image>` and `<Picture>` write each
+ * size and format into the image's URL, and Nohead makes it on request, so
+ * the build never downloads or resizes a Nohead image. WebP unless a
  * `format` says otherwise. With `widths`, an image's URL is never larger than
- * the largest of them: pass the asset's own `width` and `height`, and its
- * `src` (the fallback for browsers without `srcset`) is made at that largest
- * width, not the original's. Other images (the site's own, imported or remote) are
- * served as they are.
+ * the largest of them, and with its original size known, no `srcset` width
+ * is larger than the original.
  *
- * Defaults for every image go in the service's `config`, and an image's own
- * `quality` or `format` wins:
+ * The site's own images (imported, or remote ones in `image.domains`) are
+ * Astro's sharp service's, resized and converted at build time as Astro does
+ * by default; the service's `config` takes sharp's options for them too.
+ *
+ * Defaults for every Nohead image go in the service's `config`, and an
+ * image's own `quality` or `format` wins:
  *
  *   service: { entrypoint: "@nohead/astro/image-service", config: { quality: 70 } }
+ *
+ * How it stays out of the build: Astro writes an image into the build only
+ * when the service is local and the image's URL isn't its validated `src`
+ * as it is (`getImage`, astro/assets). So `validateOptions` makes a Nohead
+ * image's `src` its final URL, and `getURL` returns that URL unchanged.
+ * test/build.test.ts builds a site to keep that true.
  */
-import type { ExternalImageService, ImageTransform } from "astro"
-import { baseService } from "astro/assets"
-
-import { fitOf, formatOf, qualityOf } from "./frameworks.ts"
+import type { ImageMetadata, ImageTransform, LocalImageService } from "astro"
+import sharpService, {
+  type SharpImageServiceConfig,
+} from "astro/assets/services/sharp"
 import { imageUrl, isImageUrl } from "@nohead/sdk/images"
 
-/** The service's `config` in astro.config: defaults for every image. */
-export interface ImageServiceConfig {
+import { fitOf, formatOf, qualityOf } from "./frameworks.ts"
+
+/**
+ * The service's `config` in astro.config: defaults for every Nohead image,
+ * and sharp's options for the site's own images.
+ */
+export interface ImageServiceConfig extends SharpImageServiceConfig {
   /** 1 to 100, or one of Astro's presets (`"high"` is 80). */
   quality?: number | "low" | "mid" | "high" | "max"
   /** `"webp"` unless set. */
   format?: "webp" | "avif" | "jpeg" | "jpg" | "png"
+}
+
+type Config = Parameters<LocalImageService<ImageServiceConfig>["getURL"]>[1]
+
+/** A Nohead image's `image_url`, and its size when Astro was given it. */
+interface Original {
+  url: string
+  width?: number
+  height?: number
+}
+
+/**
+ * Each Nohead image's final URL, as `validateOptions` made it `src`, with
+ * the original it came from: `srcset` widths are made from the original's
+ * URL, since `imageUrl` can't take a URL that already has options. One
+ * entry per image and size a site renders.
+ */
+const originals = new Map<string, Original>()
+
+/**
+ * The Nohead image a `src` is: an `image_url`, an image's final URL, or
+ * image metadata (an image the loader expanded) whose `src` is one.
+ */
+function originalOf(src: ImageTransform["src"]): Original | undefined {
+  if (typeof src === "string")
+    return originals.get(src) ?? (isImageUrl(src) ? { url: src } : undefined)
+  if (isImageUrl(src.src))
+    return { url: src.src, width: src.width, height: src.height }
+  return undefined
 }
 
 /**
@@ -41,12 +83,15 @@ export interface ImageServiceConfig {
  * asset's, an original's, which can be huge; capped, `src` is the largest
  * `srcset` entry, one URL the CDN makes once. Only the URL: the `width` and
  * `height` attributes stay the image's, its display size without CSS.
- * Without `widths` (`densities`, or one size), the size asked for.
+ * Without `widths` (`densities`, or one size), the size asked for. Never
+ * wider than the original, when its size is known: Nohead doesn't enlarge.
  */
-function sizeOf({ width, height, widths }: ImageTransform) {
-  const largest = widths?.length ? Math.max(...widths) : undefined
-  if (!largest || typeof width !== "number" || width <= largest)
-    return { width, height }
+function sizeOf({ width, height, widths }: ImageTransform, original: Original) {
+  const largest = Math.min(
+    widths?.length ? Math.max(...widths) : Infinity,
+    original.width ?? Infinity
+  )
+  if (typeof width !== "number" || width <= largest) return { width, height }
   return {
     width: largest,
     height:
@@ -56,36 +101,66 @@ function sizeOf({ width, height, widths }: ImageTransform) {
   }
 }
 
-const imageService: ExternalImageService<ImageServiceConfig> = {
-  getHTMLAttributes: baseService.getHTMLAttributes,
-  getSrcSet: baseService.getSrcSet,
+/** The URL of a Nohead image at a transform's size, format and quality. */
+function urlOf(options: ImageTransform, original: Original, config: Config) {
+  const defaults = config?.service?.config
+  const { width, height } = sizeOf(options, original)
+  return imageUrl(original.url, {
+    width,
+    height,
+    fit: fitOf(options.fit, width, height),
+    format: formatOf(options.format ?? defaults?.format ?? "webp"),
+    quality: qualityOf(options.quality ?? defaults?.quality),
+  })
+}
+
+const imageService: LocalImageService<ImageServiceConfig> = {
+  ...sharpService,
   async validateOptions(options, imageConfig, logger) {
-    const validated: ImageTransform = await baseService.validateOptions!(
-      options,
+    const original = originalOf(options.src)
+    if (!original)
+      return sharpService.validateOptions!(options, imageConfig, logger)
+    // Checked as Astro checks a remote image, then given its final URL. The
+    // format first, so the srcset's <source type> says what the URLs serve
+    // (a Picture's needs `jpeg`, not `jpg`), and before Astro 6 picks its
+    // own default.
+    const validated: ImageTransform = await sharpService.validateOptions!(
+      {
+        ...options,
+        src: original.url,
+        format:
+          options.format ??
+          formatOf(imageConfig?.service?.config?.format) ??
+          "webp",
+      },
       imageConfig,
       logger
     )
-    // So the srcset's <source type> says what the URLs serve.
-    if (isImageUrl(validated.src)) {
-      // A Picture's <source type> needs `jpeg`, not `jpg`.
-      validated.format ??=
-        formatOf(imageConfig?.service?.config?.format) ?? "webp"
-    }
+    const url = urlOf(validated, original, imageConfig)
+    originals.set(url, original)
+    validated.src = url
     return validated
   },
-  getURL(options, imageConfig) {
-    const defaults = imageConfig?.service?.config
-    const { src } = options
-    // An imported image's metadata, or another URL.
-    if (!isImageUrl(src)) return typeof src === "string" ? src : src.src
-    const { width, height } = sizeOf(options)
-    return imageUrl(src, {
-      width,
-      height,
-      fit: fitOf(options.fit, width, height),
-      format: formatOf(options.format ?? defaults?.format ?? "webp"),
-      quality: qualityOf(options.quality ?? defaults?.quality),
-    })
+  getSrcSet(options, imageConfig, logger) {
+    const original =
+      typeof options.src === "string" ? originals.get(options.src) : undefined
+    if (!original?.width || !original.height)
+      return sharpService.getSrcSet!(options, imageConfig, logger)
+    // As image metadata, so Astro keeps the widths within the original's
+    // and adds its own width in place of those above it (it reads only the
+    // size; the format is the transform's).
+    const src: ImageMetadata = {
+      src: original.url,
+      width: original.width,
+      height: original.height,
+      format: "webp",
+    }
+    return sharpService.getSrcSet!({ ...options, src }, imageConfig, logger)
+  },
+  getURL(options, imageConfig, logger) {
+    const original = originalOf(options.src)
+    if (!original) return sharpService.getURL(options, imageConfig, logger)
+    return urlOf(options, original, imageConfig)
   },
 }
 

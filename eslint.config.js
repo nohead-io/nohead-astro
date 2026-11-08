@@ -4,7 +4,8 @@ import tseslint from "typescript-eslint"
 import { defineConfig, globalIgnores } from "eslint/config"
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  // The fixture site's .astro holds what Astro generates when it builds.
+  globalIgnores(["dist", "test/fixtures/site/.astro"]),
   {
     files: ["**/*.ts"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],

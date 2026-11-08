@@ -1,3 +1,4 @@
 dist
 package-lock.json
 samples.json
+test/fixtures/site/.astro

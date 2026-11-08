@@ -5,8 +5,8 @@
  *   image: { service: { entrypoint: "@nohead/astro/image-service" } }
  *
  * then `<Image src={asset.image_url} width={…} height={…} alt={…} />`, or
- * `<Image src={entry.data.cover} alt={…} />` with an image the loader
- * expanded, which carries its own size. `<Image>` and `<Picture>` write each
+ * `<Image src={imageMetadata(entry.data.cover)} alt={…} />`, which gives
+ * Astro the original's size. `<Image>` and `<Picture>` write each
  * size and format into the image's URL, and Nohead makes it on request, so
  * the build never downloads or resizes a Nohead image. WebP unless a
  * `format` says otherwise. With `widths`, an image's URL is never larger than
@@ -59,7 +59,8 @@ interface Original {
 /**
  * Each Nohead image's final URL, as `validateOptions` made it `src`, with
  * the original it came from: `srcset` widths are made from the original's
- * URL, since `imageUrl` can't take a URL that already has options.
+ * URL, since `imageUrl` can't take a URL that already has options. One
+ * entry per image and size a site renders.
  */
 const originals = new Map<string, Original>()
 
@@ -159,9 +160,7 @@ const imageService: LocalImageService<ImageServiceConfig> = {
   getURL(options, imageConfig, logger) {
     const original = originalOf(options.src)
     if (!original) return sharpService.getURL(options, imageConfig, logger)
-    const url = urlOf(options, original, imageConfig)
-    originals.set(url, original)
-    return url
+    return urlOf(options, original, imageConfig)
   },
 }
 

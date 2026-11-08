@@ -53,7 +53,7 @@ const cover = imageMetadata(post.data.cover) // the image's URL and original siz
 ---
 <h1>{post.data.title}</h1>
 <p>By {authors.map((author) => author?.data.name).join(" and ")}</p>
-{cover && <Image src={cover} widths={[480, 960, 1440]} alt={post.data.cover?.alt ?? ""} />}
+{cover && <Image src={cover} widths={[480, 960, 1440]} sizes="(min-width: 60rem) 48rem, 100vw" alt={post.data.cover?.alt ?? ""} />}
 <Content />
 ```
 
@@ -107,7 +107,7 @@ import logo from "../assets/logo.png"
 const cover = imageMetadata(post.data.cover) // or an `Asset` from @nohead/sdk
 ---
 <Image src={logo} alt="" />                                  <!-- resized at build -->
-<Image src={cover} widths={[480, 960, 1440]} alt="" />       <!-- Nohead's image URLs -->
+<Image src={cover} widths={[480, 960]} sizes="30rem" alt="" /> <!-- Nohead's image URLs -->
 <Image src={asset.image_url} width={800} height={600} alt="" />
 ```
 

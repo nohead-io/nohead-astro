@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -19,6 +19,8 @@ let html: string
 const fetched: string[] = []
 
 beforeAll(async () => {
+  // Made here, not committed (.gitignore).
+  await mkdir(join(root, "src/assets"), { recursive: true })
   await sharp({
     create: { width: 2000, height: 1000, channels: 3, background: "#c33" },
   })
@@ -36,7 +38,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   vi.restoreAllMocks()
-  await rm(outDir, { recursive: true, force: true })
+  if (outDir) await rm(outDir, { recursive: true, force: true })
 })
 
 const img = (id: string) =>

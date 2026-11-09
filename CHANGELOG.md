@@ -6,7 +6,7 @@ releases; a change that could break your site is a major one. Before 1.0, a
 minor release may also break it, and its notes mark each such change
 **Breaking**. Each release's section is its GitHub release's notes.
 
-## Unreleased
+## 0.3.0
 
 - `schemaFile` reads a collection's fields from the schema file that
   `nohead schema pull` writes, instead of the API:

@@ -1,6 +1,6 @@
 {
   "name": "@nohead/astro",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Astro content loader and image service for Nohead",
   "license": "MIT",
   "homepage": "https://nohead.io",

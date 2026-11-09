@@ -38,11 +38,11 @@ jobs:
           (cd "$dir" && npm init -y >/dev/null && npm install --silent "$GITHUB_WORKSPACE"/nohead-astro-*.tgz astro &&
             node --input-type=module -e 'await import("@nohead/astro"); await import("@nohead/astro/image-service")')
       # The lockfile holds the oldest @nohead/sdk the package takes (its
-      # dependency range starts there); sites get the newest, so the types
-      # and tests run against that too.
-      - name: Types and tests with the latest @nohead/sdk
+      # dependency range starts there); sites get the newest in the range, so
+      # the types and tests run against that too.
+      - name: Types and tests with the newest @nohead/sdk
         run: |
-          npm install --no-save --no-audit --no-fund @nohead/sdk@latest
+          npm install --no-save --no-audit --no-fund "@nohead/sdk@$(node -p 'require("./package.json").dependencies["@nohead/sdk"]')"
           npm ls @nohead/sdk
           npm run typecheck
           npm test

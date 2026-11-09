@@ -8,19 +8,20 @@ import { NoheadError, type FieldType } from "@nohead/sdk"
 
 import type { SchemaCollection, SchemaField } from "./schema.ts"
 
-const TYPES: readonly string[] = [
-  "text",
-  "long_text",
-  "rich_text",
-  "integer",
-  "decimal",
-  "date",
-  "boolean",
-  "enum",
-  "asset",
-  "relation",
-  "json",
-] satisfies FieldType[]
+// Every field type: TypeScript fails here when the SDK gains one.
+const TYPES: Record<FieldType, true> = {
+  text: true,
+  long_text: true,
+  rich_text: true,
+  integer: true,
+  decimal: true,
+  date: true,
+  boolean: true,
+  enum: true,
+  asset: true,
+  relation: true,
+  json: true,
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -97,7 +98,7 @@ function fieldOf(
   const field = typeof value === "string" ? { type: value } : value
   if (!isObject(field)) throw fail(`${at} is no mapping or type name`)
   const type = String(field.type).replaceAll("-", "_")
-  if (!TYPES.includes(type)) {
+  if (!Object.hasOwn(TYPES, type)) {
     throw fail(`${at} has an unknown type, ${JSON.stringify(field.type)}`)
   }
   const options = field.options
@@ -109,7 +110,7 @@ function fieldOf(
       options.every((option) => typeof option === "string")
     )
   ) {
-    throw fail(`${at} is an enum without options`)
+    throw fail(`${at} is an enum without options (a list of strings)`)
   }
   if (type === "relation" && typeof field.collection !== "string") {
     throw fail(`${at} is a relation without its collection's slug`)

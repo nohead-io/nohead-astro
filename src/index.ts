@@ -77,8 +77,9 @@ export interface NoheadLoaderOptions extends ClientOptions {
   references?: Record<string, string>
   /**
    * A schema file to read the collection's fields from, instead of the API:
-   * the `nohead.schema.yaml` that `nohead schema pull` writes (relative to
-   * where Astro runs, the project's root, or a URL). The entries' schema
+   * the `nohead.schema.yaml` that `nohead schema pull` writes: a path
+   * relative to the folder Astro runs in (usually the project's root), or
+   * a URL such as `new URL("../nohead.schema.yaml", import.meta.url)`. The entries' schema
    * and types then need no key, so `astro check` and `astro sync` run
    * without one (in CI, or in a fork's pull request), and a load without a
    * key leaves the collection empty, with a warning. Pull the file again

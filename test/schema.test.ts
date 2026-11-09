@@ -417,7 +417,7 @@ describe("noheadLoader's schema from a schema file", () => {
     ],
     [
       "collections: { posts: { fields: { x: enum } } }",
-      "collections.posts.fields.x is an enum without options",
+      "collections.posts.fields.x is an enum without options (a list of strings)",
     ],
     [
       "collections: { posts: { fields: { x: relation } } }",

@@ -73,7 +73,7 @@ function astro(schema: z.ZodType = z.record(z.string(), z.unknown())) {
       }),
       delete: vi.fn((id: string) => entries.delete(id)),
     },
-    logger: { info: vi.fn() },
+    logger: { info: vi.fn(), warn: vi.fn() },
     parseData: vi.fn(({ data }: { data: Record<string, unknown> }) =>
       Promise.resolve(schema.parse(data))
     ),
@@ -328,6 +328,35 @@ describe("noheadLoader", () => {
     await expect(load(astro().context)).rejects.toThrow(
       "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment"
     )
+  })
+
+  it("loads nothing without a key when the types come from a schema file", async () => {
+    vi.stubEnv("NOHEAD_API_KEY", "")
+    onTestFinished(() => void vi.unstubAllEnvs())
+    const { calls, load } = loader([], {
+      apiKey: undefined,
+      schemaFile: "nohead.schema.yaml",
+    })
+    const { context, entries } = astro()
+    entries.set("rec_old", { id: "rec_old", data: {} })
+    await load(context)
+
+    expect(calls).toEqual([])
+    expect(context.logger.warn).toHaveBeenCalledWith(
+      "No API key, so no posts records: its types come from nohead.schema.yaml. Set NOHEAD_API_KEY to load them."
+    )
+    expect([...entries.keys()]).toEqual(["rec_old"])
+  })
+
+  it("loads as usual with a key when the types come from a schema file", async () => {
+    const { calls, load } = loader([page([published("rec_1", {})], null)], {
+      schemaFile: "nohead.schema.yaml",
+    })
+    const { context, entries } = astro()
+    await load(context)
+
+    expect(calls).toHaveLength(1)
+    expect([...entries.keys()]).toEqual(["rec_1"])
   })
 
   it("calls the API at NOHEAD_API_URL when it is set, as the client does", async () => {

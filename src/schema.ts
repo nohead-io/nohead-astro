@@ -9,13 +9,37 @@ import type { RichText } from "@nohead/sdk"
 type Z = typeof Zod.z
 type Schema = Zod.ZodType
 
+/**
+ * A field as the schema reads it: from the API (`collections.get`) or from a
+ * schema file (`schema-file.ts`).
+ */
+export interface SchemaField {
+  key: string
+  name: string
+  type: G.FieldType
+  required: boolean
+  multiple: boolean
+  configuration: {
+    description?: string | null
+    /** An enum's choices. */
+    options?: string[]
+    /** A relation's target: an ID from the API, a slug from a file. */
+    target_collection_id?: string
+  }
+}
+
+export interface SchemaCollection {
+  slug: string
+  fields: readonly SchemaField[]
+}
+
 export interface SchemaOptions {
   /** Fields whose IDs the loader replaces with what they point at. */
   expand: string[]
   /** The rich text field that moves to `rendered`, out of the data. */
   body: string | undefined
   richText: RichText
-  /** Collection slugs by ID, for relations' targets. */
+  /** The Astro collection each relation target loads as, by its ID (or slug). */
   slugs: Map<string, string>
   /** Whether entries are published records only: then each has `published_at`. */
   publishedOnly: boolean
@@ -24,7 +48,7 @@ export interface SchemaOptions {
 /** The schema and the `Entry` type (a module, as Astro writes it) of the data. */
 export function collectionSchema(
   z: Z,
-  collection: G.Collection,
+  collection: SchemaCollection,
   options: SchemaOptions
 ): { schema: Schema; types: string } {
   const shape: Record<string, Schema> = {}
@@ -74,7 +98,7 @@ export function collectionSchema(
 
 function fieldSchema(
   z: Z,
-  field: G.Field,
+  field: SchemaField,
   { expand, richText, slugs }: SchemaOptions
 ): { schema: Schema; type: string; optional: boolean } {
   const expanded = expand.includes(field.key)
@@ -110,7 +134,7 @@ function fieldSchema(
         optional: false,
       }
     case "enum": {
-      const options = field.configuration.options
+      const options = field.configuration.options ?? []
       one = {
         schema: z.enum(options as [string, ...string[]]),
         type: options.map((option) => JSON.stringify(option)).join(" | "),
@@ -123,7 +147,8 @@ function fieldSchema(
         : { schema: z.string(), type: "string" }
       break
     case "relation": {
-      const target = slugs.get(field.configuration.target_collection_id)
+      const id = field.configuration.target_collection_id
+      const target = id === undefined ? undefined : slugs.get(id)
       one = expanded
         ? { schema: embeddedRecord(z), type: "EmbeddedRecord" }
         : target

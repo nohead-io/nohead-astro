@@ -1,3 +1,5 @@
+import type { Asset, Collection, NoheadRecord } from "@nohead/sdk"
+
 // Test helpers: a fetch that answers from a list of replies and records the
 // calls, and the API's shapes the loader reads. The client and its contract
 // are @nohead/sdk's, tested there; these tests cover what the loader does
@@ -52,7 +54,8 @@ export function mockFetch(replies: Reply[]): {
 
 /**
  * The API's answers the loader reads, as the contract's examples give them
- * (taken from @nohead/sdk's tests).
+ * (taken from @nohead/sdk's tests). `satisfies` the SDK's types, so the
+ * typecheck fails when the API's shapes move on from these copies.
  */
 const EXAMPLES: Record<string, Record<string, unknown>> = {
   collections_get: {
@@ -101,7 +104,7 @@ const EXAMPLES: Record<string, Record<string, unknown>> = {
     ],
     created_at: "2026-09-27T12:00:00.000Z",
     updated_at: "2026-09-27T12:00:00.000Z",
-  },
+  } satisfies Collection,
   assets_get: {
     id: "ast_01J9ZQ3F8X5W2K7M4N6P0R1S2T",
     object: "asset",
@@ -125,7 +128,7 @@ const EXAMPLES: Record<string, Record<string, unknown>> = {
     uploaded_at: "2026-10-02T12:00:00Z",
     created_at: "2026-09-27T12:00:00.000Z",
     updated_at: "2026-09-27T12:00:00.000Z",
-  },
+  } satisfies Asset,
 }
 
 /** The example of what `operation` answers, with `fields` changed. */
@@ -138,7 +141,10 @@ export function exampleOf(
   return { ...structuredClone(example), ...fields }
 }
 
-export const record = (id: string, data: Record<string, unknown> = {}) => ({
+export const record = (
+  id: string,
+  data: Record<string, unknown> = {}
+): NoheadRecord<Record<string, unknown>> => ({
   id,
   object: "record",
   collection_id: "col_1",

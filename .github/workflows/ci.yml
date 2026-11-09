@@ -37,6 +37,15 @@ jobs:
           dir=$(mktemp -d)
           (cd "$dir" && npm init -y >/dev/null && npm install --silent "$GITHUB_WORKSPACE"/nohead-astro-*.tgz astro &&
             node --input-type=module -e 'await import("@nohead/astro"); await import("@nohead/astro/image-service")')
+      # The lockfile holds the oldest @nohead/sdk the package takes (its
+      # dependency range starts there); sites get the newest, so the types
+      # and tests run against that too.
+      - name: Types and tests with the latest @nohead/sdk
+        run: |
+          npm install --no-save --no-audit --no-fund @nohead/sdk@latest
+          npm ls @nohead/sdk
+          npm run typecheck
+          npm test
 
   # The one check main's ruleset requires, so the required checks don't change
   # when the jobs do.

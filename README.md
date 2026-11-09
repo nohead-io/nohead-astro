@@ -142,7 +142,7 @@ npm run lint
 npm run format      # Prettier
 ```
 
-The client and the API's contract are `@nohead/sdk`'s, tested there; these tests cover what the loader and the image service do with the API's answers.
+The client and the API's contract are `@nohead/sdk`'s, tested there; these tests cover what the loader and the image service do with the API's answers. They run against the oldest `@nohead/sdk` the package takes (the lockfile's) and, in CI, the newest in its range too.
 
 ## Releasing
 

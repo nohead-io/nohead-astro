@@ -43,6 +43,13 @@ export interface NoheadLoaderOptions extends ClientOptions {
   /** The collection's slug or ID. */
   collection: string
   /**
+   * The API key, such as `import.meta.env.NOHEAD_API_KEY` (Astro reads
+   * `.env` into `import.meta.env`). Given, even empty, it is the only key
+   * the loader reads; left out, the loader reads `NOHEAD_API_KEY` from the
+   * environment.
+   */
+  apiKey?: string | undefined
+  /**
    * Filters, added to the default `{ published_at: { exists: true } }`, so
    * only published records load whatever the key may read. Set
    * `published_at` to change that: `undefined` loads every record.
@@ -156,10 +163,10 @@ export function imageMetadata(
 
 /**
  * An Astro content loader for a Nohead collection. It reads the key from
- * `apiKey` or `NOHEAD_API_KEY` (and the API's address from `NOHEAD_API_URL`,
- * if set, as the client does), and takes the other client options too
- * (`timeout`, `maxRetries`, `headers`…). Empty fields are left out of an
- * entry's data, so a schema's `.optional()` fits them.
+ * `apiKey`, or when that's left out, `NOHEAD_API_KEY` (and the API's address
+ * from `NOHEAD_API_URL`, if set, as the client does), and takes the other
+ * client options too (`timeout`, `maxRetries`, `headers`…). Empty fields are
+ * left out of an entry's data, so a schema's `.optional()` fits them.
  */
 export function noheadLoader(options: NoheadLoaderOptions): Loader {
   const {
@@ -186,15 +193,21 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     publishedAt === undefined || publishedAt.exists === false
   )
 
-  // Astro reads .env into import.meta.env, not process.env.
-  const hasKey = () => Boolean(client.apiKey || environment().NOHEAD_API_KEY)
+  // Astro reads .env into import.meta.env, not process.env. A site that
+  // gives apiKey reads with that alone: when its variable is unset, a
+  // NOHEAD_API_KEY in the shell (another project's, maybe) mustn't stand in.
+  const keyGiven = Object.hasOwn(options, "apiKey")
+  const apiKey = () => (keyGiven ? client.apiKey : environment().NOHEAD_API_KEY)
   const connect = () => {
-    if (!hasKey()) {
+    const key = apiKey()
+    if (!key) {
       throw new NoheadError(
-        "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment"
+        keyGiven
+          ? "Missing API key: the apiKey given to noheadLoader is empty"
+          : "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment"
       )
     }
-    return new Nohead({ ...client, richText })
+    return new Nohead({ ...client, apiKey: key, richText })
   }
 
   return {
@@ -245,10 +258,12 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     async load(context: LoaderContext) {
       const { store, logger } = context
       // With the types from a file, a run without a key (a check in CI)
-      // has nothing to load, rather than failing.
-      if (schemaFile !== undefined && !hasKey()) {
+      // has nothing to load, rather than failing. Astro keeps entries
+      // between builds, so an earlier keyed build's go too.
+      if (schemaFile !== undefined && !apiKey()) {
+        store.clear()
         logger.warn(
-          `No API key, so no ${collection} records: its types come from ${String(schemaFile)}. Set NOHEAD_API_KEY to load them.`
+          `No API key, so the ${collection} collection is empty: its types come from ${String(schemaFile)}, and its records need a key.`
         )
         return
       }

@@ -83,6 +83,19 @@ Now the loader reads the collection's fields when Astro syncs (`astro dev`, `ast
 - The schema takes the key's `schema:read` scope, which published-only keys can have; without it the sync fails and says so.
 - A `schema` given to `defineCollection` takes its place, as in any Astro loader. Use one to transform values, or on Astro 5, which doesn't ask loaders for a schema.
 
+### From a schema file, without a key
+
+Reading the fields from the API takes a key, so without one `astro check` and `astro sync` fail before checking anything: in CI, or in a fork's pull request. With `schemaFile`, the loader reads them from the schema file that [`nohead schema pull`](https://docs.nohead.io/guides/schema-as-code) writes (a path relative to the folder Astro runs in, usually the project's root, or a URL), and never asks the API for them:
+
+```ts
+loader: noheadLoader({ collection: "posts", schemaFile: "nohead.schema.yaml", apiKey: NOHEAD_API_KEY }),
+```
+
+- The schema and types are the same as from the API. The collection is its slug in the file.
+- Without a key, a load leaves the collection empty and warns, so a check runs; with one, records load as usual. A build without a key builds no pages from the collection, so a deploy needs the key as before.
+- If the site declares the key in `astro:env`, make it optional there (`envField.string({ context: "server", access: "secret", optional: true })`), or Astro refuses to run without it before the loader does.
+- Commit the file and pull it again when the fields change (then restart `astro dev`, which doesn't watch the file). `npx nohead schema diff --exit-code` exits 1 while the file and the project differ, for a CI check.
+
 - **Entries.** Each record becomes an entry whose `id` is the record ID and whose `data` is its fields, checked by the collection's schema. Collections load when the site builds and when `astro dev` starts. Each load lists the whole collection, removes the entries of records that are gone, and skips records that haven't changed.
 - **Published only.** Only published records load, whatever the key may read, so a published-only key (`nohead_pk_…`) is enough. `filter` adds conditions (`{ featured: true }`); `filter: { published_at: undefined }` loads every record.
 - **Rich text** reads as HTML (or Markdown with `richText: "markdown"`). `body` names the field that `render(entry)` renders: it moves out of `data` into the entry's rendered content. As Markdown, it goes through Astro's own Markdown pipeline (your plugins, syntax highlighting, `headings`). A record can have several rich text fields and an entry renders one; the others stay in `data` as HTML, for `<Fragment set:html={post.data.summary} />`.

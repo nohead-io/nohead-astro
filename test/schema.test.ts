@@ -1,5 +1,9 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import type { z } from "astro/zod"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, onTestFinished, vi } from "vitest"
 
 import { noheadLoader, type NoheadLoaderOptions } from "../src/index.ts"
 import {
@@ -329,6 +333,108 @@ describe("noheadLoader's schema", () => {
       schemaOf({}, apiError(403, "authorization_error"))
     ).rejects.toThrow(
       "noheadLoader reads the posts collection's fields for its schema, which takes the key's schema:read scope: add it, or pass a schema to defineCollection"
+    )
+  })
+})
+
+// The posts fixture above as `nohead schema pull` writes it.
+const FILE = `# Nohead schema: nohead schema diff | push.
+collections:
+  people:
+    fields:
+      name: { type: text, required: true }
+  categories:
+    fields:
+      name: text
+  posts:
+    fields:
+      title: { type: text, required: true, max_length: 120 }
+      slug:
+        type: text
+        required: true
+        format: slug
+        description: The address of the post, /posts/<slug>.
+      date: { type: date, required: true }
+      category: { type: relation, required: true, collection: categories }
+      authors: { type: relation, required: true, multiple: true, collection: people }
+      summary: { type: long_text, required: true }
+      cover: { type: asset, accepted_types: ["image/*"] }
+      gallery: { type: asset, multiple: true }
+      body: { type: rich_text, required: true }
+      notes: rich_text
+      tags: { type: text, multiple: true }
+      featured: boolean
+      status: { type: enum, required: true, options: [draft, live] }
+      year: integer
+      price: decimal
+      extra: json
+`
+
+/** A schema file in a temporary folder, removed after the test. */
+async function schemaFile(text: string) {
+  const folder = await mkdtemp(join(tmpdir(), "nohead-astro-"))
+  onTestFinished(() => rm(folder, { recursive: true, force: true }))
+  const path = join(folder, "nohead.schema.yaml")
+  await writeFile(path, text)
+  return path
+}
+
+describe("noheadLoader's schema from a schema file", () => {
+  it("is the API's schema and types, without a request or a key", async () => {
+    vi.stubEnv("NOHEAD_API_KEY", "")
+    onTestFinished(() => void vi.unstubAllEnvs())
+    const fromApi = await schemaOf()
+    const fromFile = await schemaOf({
+      schemaFile: await schemaFile(FILE),
+      apiKey: undefined,
+    })
+
+    expect(fromFile.calls).toEqual([])
+    expect(fromFile.types).toBe(fromApi.types)
+    expect(fromFile.schema.parse(entry)).toEqual(fromApi.schema.parse(entry))
+  })
+
+  it("takes a URL, and renames related collections as references says", async () => {
+    const { types } = await schemaOf({
+      schemaFile: pathToFileURL(await schemaFile(FILE)),
+      references: { categories: "tags" },
+    })
+    expect(types).toContain('"category": { collection: "tags"; id: string }')
+    expect(types).toContain(
+      '"authors": ({ collection: "people"; id: string })[]'
+    )
+  })
+
+  it.each([
+    ["collections: []", 'it has no "collections" mapping'],
+    [
+      "collections: { people: {} }",
+      "it has no posts collection (it has people); the loader's collection is its slug there",
+    ],
+    [
+      "collections: { posts: { fields: { x: { type: rating } } } }",
+      'collections.posts.fields.x has an unknown type, "rating"',
+    ],
+    [
+      "collections: { posts: { fields: { x: enum } } }",
+      "collections.posts.fields.x is an enum without options (a list of strings)",
+    ],
+    [
+      "collections: { posts: { fields: { x: relation } } }",
+      "collections.posts.fields.x is a relation without its collection's slug",
+    ],
+  ])("refuses %s", async (text, message) => {
+    const path = await schemaFile(text)
+    await expect(schemaOf({ schemaFile: path })).rejects.toThrow(
+      `noheadLoader's schemaFile ${path}: ${message}`
+    )
+  })
+
+  it("says when it can't read the file", async () => {
+    await expect(
+      schemaOf({ schemaFile: "missing/nohead.schema.yaml" })
+    ).rejects.toThrow(
+      "noheadLoader's schemaFile missing/nohead.schema.yaml: ENOENT"
     )
   })
 })

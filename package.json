@@ -49,7 +49,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@nohead/sdk": ">=0.16.0 <1.0.0"
+    "@nohead/sdk": ">=0.16.0 <1.0.0",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "astro": ">=5.9.0"

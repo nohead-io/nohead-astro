@@ -6,6 +6,15 @@ releases; a change that could break your site is a major one. Before 1.0, a
 minor release may also break it, and its notes mark each such change
 **Breaking**. Each release's section is its GitHub release's notes.
 
+## Unreleased
+
+- `schemaFile` reads a collection's fields from the schema file that
+  `nohead schema pull` writes, instead of the API:
+  `noheadLoader({ collection: "posts", schemaFile: "nohead.schema.yaml" })`.
+  The schema and types are the same, and need no key, so `astro check` and
+  `astro sync` run without one (in CI, or a fork's pull request); a load
+  without a key then leaves the collection empty, with a warning.
+
 ## 0.2.0
 
 - **Breaking:** the image service resizes your site's own images again.

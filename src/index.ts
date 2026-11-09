@@ -29,6 +29,7 @@ import {
 import type * as G from "@nohead/sdk"
 
 import { collectionSchema } from "./schema.ts"
+import { collectionFromFile } from "./schema-file.ts"
 
 /** The environment's variables, where there is one (Node, Bun, Deno). */
 function environment(): Record<string, string | undefined> {
@@ -74,6 +75,18 @@ export interface NoheadLoaderOptions extends ClientOptions {
    * Nohead collection.
    */
   references?: Record<string, string>
+  /**
+   * A schema file to read the collection's fields from, instead of the API:
+   * the `nohead.schema.yaml` that `nohead schema pull` writes: a path
+   * relative to the folder Astro runs in (usually the project's root), or
+   * a URL such as `new URL("../nohead.schema.yaml", import.meta.url)`. The entries' schema
+   * and types then need no key, so `astro check` and `astro sync` run
+   * without one (in CI, or in a fork's pull request), and a load without a
+   * key leaves the collection empty, with a warning. Pull the file again
+   * when the fields change; `nohead schema diff --exit-code` fails while it
+   * and the project differ.
+   */
+  schemaFile?: string | URL
 }
 
 /** An expanded asset field's value: what a page needs to show the file. */
@@ -156,6 +169,7 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     body,
     richText = "html",
     references = {},
+    schemaFile,
     ...client
   } = options
   if (!collection) throw new TypeError("noheadLoader needs a collection")
@@ -172,9 +186,10 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     publishedAt === undefined || publishedAt.exists === false
   )
 
+  // Astro reads .env into import.meta.env, not process.env.
+  const hasKey = () => Boolean(client.apiKey || environment().NOHEAD_API_KEY)
   const connect = () => {
-    // Astro reads .env into import.meta.env, not process.env.
-    if (!client.apiKey && !environment().NOHEAD_API_KEY) {
+    if (!hasKey()) {
       throw new NoheadError(
         "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment"
       )
@@ -187,8 +202,22 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     // Astro 6 and later: the entries' schema and type, from the collection's
     // fields. A schema given to defineCollection takes its place.
     async createSchema() {
-      const nohead = connect()
       const { z } = await import("astro/zod")
+      const schemaOptions = {
+        expand: expand ?? [],
+        body,
+        richText,
+        publishedOnly,
+      }
+      if (schemaFile !== undefined) {
+        const { collection: fields, slugs } = await collectionFromFile(
+          schemaFile,
+          collection,
+          references
+        )
+        return collectionSchema(z, fields, { ...schemaOptions, slugs })
+      }
+      const nohead = connect()
       try {
         // Relations name their target by ID; references need the Astro
         // collection it loads as: its slug, unless `references` renames it.
@@ -204,13 +233,7 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
           nohead.collections.get(collection),
           slugsById(),
         ])
-        return collectionSchema(z, fields, {
-          expand: expand ?? [],
-          body,
-          richText,
-          slugs,
-          publishedOnly,
-        })
+        return collectionSchema(z, fields, { ...schemaOptions, slugs })
       } catch (error) {
         if (!(error instanceof AuthorizationError)) throw error
         throw new NoheadError(
@@ -221,6 +244,14 @@ export function noheadLoader(options: NoheadLoaderOptions): Loader {
     },
     async load(context: LoaderContext) {
       const { store, logger } = context
+      // With the types from a file, a run without a key (a check in CI)
+      // has nothing to load, rather than failing.
+      if (schemaFile !== undefined && !hasKey()) {
+        logger.warn(
+          `No API key, so no ${collection} records: its types come from ${String(schemaFile)}. Set NOHEAD_API_KEY to load them.`
+        )
+        return
+      }
       const nohead = connect()
       const records = []
       for await (const record of nohead.records.list(collection, {

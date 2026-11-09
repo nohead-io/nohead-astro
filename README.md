@@ -92,7 +92,7 @@ loader: noheadLoader({ collection: "posts", schemaFile: "nohead.schema.yaml", ap
 ```
 
 - The schema and types are the same as from the API. The collection is its slug in the file.
-- Without a key, a load leaves the collection empty and warns, so a check runs; with one, records load as usual. A build without a key builds no pages from the collection, so a deploy needs the key as before.
+- Without a key, a load leaves the collection empty (with none of an earlier build's entries, which Astro keeps between builds) and warns, so a check runs; with one, records load as usual. A build without a key builds no pages from the collection, so a deploy needs the key as before.
 - If the site declares the key in `astro:env`, make it optional there (`envField.string({ context: "server", access: "secret", optional: true })`), or Astro refuses to run without it before the loader does.
 - Commit the file and pull it again when the fields change (then restart `astro dev`, which doesn't watch the file). `npx nohead schema diff --exit-code` exits 1 while the file and the project differ, for a CI check.
 
@@ -105,7 +105,7 @@ loader: noheadLoader({ collection: "posts", schemaFile: "nohead.schema.yaml", ap
 - **The record's own times** are in `data` too: `published_at` (when it was published; publishing again moves it), `created_at` and `updated_at`. Nohead reserves these keys, so no field can clash with them. Sort or date posts by `published_at`, and give a sitemap `updated_at`. With entries limited to published records (the default), every entry has `published_at`.
 - **Empty fields** are left out of `data` rather than `null`, so `.optional()` fits them. Without the loader's schema, dates and times are strings: `z.coerce.date()` makes them `Date`s.
 - **Dates without a time** become `Date`s at midnight UTC, as Astro makes front-matter dates. Format them in UTC, `date.toLocaleDateString("en-GB", { timeZone: "UTC" })`, or west of Greenwich they show as the day before.
-- **The key** is `apiKey`, or `NOHEAD_API_KEY` from the environment, and the API's address `NOHEAD_API_URL`, if set, as for the client; the other client options (`timeout`, `maxRetries`, `headers`) apply too. Astro keeps `.env` in `import.meta.env`, so pass the key from there as above.
+- **The key** is `apiKey`. Astro keeps `.env` in `import.meta.env`, so pass the key from there as above. Given, even empty, it is the only key the loader reads, so a site whose own variable is unset never reads with another project's `NOHEAD_API_KEY` from the shell; left out, the loader reads `NOHEAD_API_KEY` from the environment. The API's address is `NOHEAD_API_URL`, if set, as for the client; the other client options (`timeout`, `maxRetries`, `headers`) apply too.
 
 ## Images
 

@@ -6,6 +6,22 @@ releases; a change that could break your site is a major one. Before 1.0, a
 minor release may also break it, and its notes mark each such change
 **Breaking**. Each release's section is its GitHub release's notes.
 
+## Unreleased
+
+- **Breaking:** an `apiKey` given to `noheadLoader` is the only key it
+  reads, even when it's empty: `NOHEAD_API_KEY` from the environment counts
+  only when `apiKey` is left out. A site passing
+  `apiKey: import.meta.env.MY_KEY` with that variable unset used to read
+  with whatever `NOHEAD_API_KEY` the shell had, maybe another project's; now
+  the load fails for want of a key (with `schemaFile`, the collection is
+  empty).
+- With `schemaFile` and no key, a load empties the collection, as promised:
+  an earlier build's entries, which Astro keeps between builds, were still
+  published.
+- The warning of a load without a key no longer says to set
+  `NOHEAD_API_KEY`, which a site passing its own variable as `apiKey`
+  doesn't read.
+
 ## 0.3.0
 
 - `schemaFile` reads a collection's fields from the schema file that

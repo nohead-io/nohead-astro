@@ -72,6 +72,7 @@ function astro(schema: z.ZodType = z.record(z.string(), z.unknown())) {
         return true
       }),
       delete: vi.fn((id: string) => entries.delete(id)),
+      clear: () => entries.clear(),
     },
     logger: { info: vi.fn(), warn: vi.fn() },
     parseData: vi.fn(({ data }: { data: Record<string, unknown> }) =>
@@ -85,11 +86,19 @@ function astro(schema: z.ZodType = z.record(z.string(), z.unknown())) {
   return { context, entries }
 }
 
+/** A loader of posts with a key, unless `options` says otherwise. */
 function loader(replies: Reply[], options: Partial<NoheadLoaderOptions> = {}) {
+  return loaderWithout(replies, { apiKey: "nohead_sk_test", ...options })
+}
+
+/** A loader of posts with no `apiKey` unless `options` has one. */
+function loaderWithout(
+  replies: Reply[],
+  options: Partial<NoheadLoaderOptions> = {}
+) {
   const { fetch, calls } = mockFetch(replies)
   const load = noheadLoader({
     collection: "posts",
-    apiKey: "nohead_sk_test",
     baseUrl: `https://${API_HOST}`,
     fetch,
     ...options,
@@ -321,32 +330,78 @@ describe("noheadLoader", () => {
     )
   })
 
-  it("says where an Astro site's key goes when there is none", async () => {
-    vi.stubEnv("NOHEAD_API_KEY", "")
+  it.each([
+    {
+      when: "apiKey is given, whatever the environment has",
+      options: { apiKey: "nohead_sk_given" },
+      environment: "nohead_sk_shell",
+      key: "nohead_sk_given",
+    },
+    {
+      when: "apiKey isn't given",
+      options: {},
+      environment: "nohead_sk_shell",
+      key: "nohead_sk_shell",
+    },
+  ])("reads with the key from NOHEAD_API_KEY only when $when", async (row) => {
+    vi.stubEnv("NOHEAD_API_KEY", row.environment)
     onTestFinished(() => void vi.unstubAllEnvs())
-    const { load } = loader([page([], null)], { apiKey: undefined })
-    await expect(load(astro().context)).rejects.toThrow(
-      "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment"
-    )
+    const { calls, load } = loaderWithout([page([], null)], row.options)
+    await load(astro().context)
+    expect(calls[0]!.headers.get("authorization")).toBe(`Bearer ${row.key}`)
   })
 
-  it("loads nothing without a key when the types come from a schema file", async () => {
-    vi.stubEnv("NOHEAD_API_KEY", "")
+  it.each([
+    {
+      when: "neither apiKey nor NOHEAD_API_KEY has one",
+      options: {},
+      message:
+        "Missing API key: pass `apiKey: import.meta.env.NOHEAD_API_KEY` to noheadLoader, or set NOHEAD_API_KEY in the environment",
+    },
+    {
+      // The site's own variable is unset: another project's key in the
+      // shell mustn't stand in for it.
+      when: "apiKey is given but empty, even with NOHEAD_API_KEY set",
+      options: { apiKey: undefined },
+      environment: "nohead_sk_shell",
+      message: "Missing API key: the apiKey given to noheadLoader is empty",
+    },
+  ])("says the key is missing when $when", async (row) => {
+    vi.stubEnv("NOHEAD_API_KEY", row.environment ?? "")
     onTestFinished(() => void vi.unstubAllEnvs())
-    const { calls, load } = loader([], {
-      apiKey: undefined,
-      schemaFile: "nohead.schema.yaml",
-    })
-    const { context, entries } = astro()
-    entries.set("rec_old", { id: "rec_old", data: {} })
-    await load(context)
-
+    const { calls, load } = loaderWithout([page([], null)], row.options)
+    await expect(load(astro().context)).rejects.toThrow(row.message)
     expect(calls).toEqual([])
-    expect(context.logger.warn).toHaveBeenCalledWith(
-      "No API key, so no posts records: its types come from nohead.schema.yaml. Set NOHEAD_API_KEY to load them."
-    )
-    expect([...entries.keys()]).toEqual(["rec_old"])
   })
+
+  it.each([
+    { when: "no key", options: {} },
+    {
+      when: "an empty apiKey and NOHEAD_API_KEY set",
+      options: { apiKey: "" },
+      environment: "nohead_sk_shell",
+    },
+  ])(
+    "empties the collection with $when when the types come from a schema file",
+    async (row) => {
+      vi.stubEnv("NOHEAD_API_KEY", row.environment ?? "")
+      onTestFinished(() => void vi.unstubAllEnvs())
+      const { calls, load } = loaderWithout([], {
+        ...row.options,
+        schemaFile: "nohead.schema.yaml",
+      })
+      const { context, entries } = astro()
+      // An earlier build's entries, kept in Astro's data store.
+      entries.set("rec_old", { id: "rec_old", data: {} })
+      await load(context)
+
+      expect(calls).toEqual([])
+      expect(context.logger.warn).toHaveBeenCalledWith(
+        "No API key, so the posts collection is empty: its types come from nohead.schema.yaml, and its records need a key."
+      )
+      expect([...entries.keys()]).toEqual([])
+    }
+  )
 
   it("loads as usual with a key when the types come from a schema file", async () => {
     const { calls, load } = loader([page([published("rec_1", {})], null)], {

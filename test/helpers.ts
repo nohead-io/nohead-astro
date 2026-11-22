@@ -92,9 +92,6 @@ const EXAMPLES: Record<string, Record<string, unknown>> = {
         type: "text",
         configuration: {
           description: "string",
-          searchable: false,
-          filterable: false,
-          sortable: false,
           min_length: 0,
           max_length: 0,
           format: "slug",

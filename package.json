@@ -15,6 +15,7 @@
     "headless",
     "astro",
     "astro-loader",
+    "image",
     "withastro"
   ],
   "type": "module",
